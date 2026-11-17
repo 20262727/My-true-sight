@@ -28,7 +28,6 @@
 <canvas id="view"></canvas>
 
 <div class="hud" id="pause">II</div>
-<div class="hud" id="score">0000000</div>
 <div class="hud" id="status">SCANNING...</div>
 <div class="hud" id="pct"></div>
 <div id="btns">
@@ -191,24 +190,24 @@ function renderNoise(time) {
       const n = Math.random();
       const r = Math.hypot(x - cx, y - cy) / maxR;
 
-      // 背景：暗い赤のザラザラしたノイズ + 中央がぼんやり明るい
-      let R = (18 + n * 70 * (1 - r * 0.7) + lum * 40) * flick;
-      let G = n * 6, B = n * 6;
-      if (n > 0.997) { R = 255; G = 120; B = 110; }   // 火花のような粒
-
-      // 人物：明るく光る赤いノイズ
-      if (m > 0.05) {
-        const core = Math.pow(m, 1.5);
-        const pr = 140 + 115 * (0.35 + 0.65 * lum) * (0.55 + 0.45 * n);
-        const hot = Math.max(0, pr - 215) * 3 * core * (n > 0.4 ? 1 : 0.3);
-        R = R * (1 - core) + pr * core * flick;
-        G = G * (1 - core) + hot * 0.9;
-        B = B * (1 - core) + hot * 0.8;
+      // 人物の部分だけ赤いノイズ（それ以外は透明＝元のカメラ映像のまま）
+      if (m > 0.15) {
+        const core = Math.min(1, (m - 0.15) / 0.5);
+        // 暗い赤の地 + 明るい赤の粒が混ざったザラザラ
+        const base = 40 + 90 * lum;
+        const R = (base + (n * n) * 215) * flick;
+        const hot = n > 0.985 ? 200 : 0;           // ときどき白っぽく光る粒
+        d[i] = Math.min(255, R);
+        d[i + 1] = hot + n * 18;
+        d[i + 2] = hot * 0.9 + n * 14;
+        d[i + 3] = 255 * core;
+      } else {
+        d[i + 3] = 0;
       }
-      d[i] = R; d[i + 1] = G; d[i + 2] = B; d[i + 3] = 255;
     }
   }
   sctx.putImageData(img, 0, 0);
+  gctx.clearRect(0, 0, glow.width, glow.height);
   gctx.drawImage(small, 0, 0, glow.width, glow.height);
 }
 
@@ -247,11 +246,9 @@ function loop(now) {
   if (vw) {
     const [x, y, w, h] = coverRect(vw, vh, W, H);
 
-    // 通常のカメラ映像
-    if (t < 0.999) {
-      ctx.globalAlpha = 1;
-      ctx.drawImage(video, x, y, w, h);
-    }
+    // 通常のカメラ映像（常に表示）
+    ctx.globalAlpha = 1;
+    ctx.drawImage(video, x, y, w, h);
 
     if (t > 0.001) {
       renderNoise(now);
@@ -262,19 +259,9 @@ function loop(now) {
       // 光のにじみ（グロー）
       ctx.imageSmoothingEnabled = true;
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = t * 0.55;
+      ctx.globalAlpha = t * 0.35;
       ctx.drawImage(glow, x, y, w, h);
-      ctx.globalAlpha = t * 0.3;
-      ctx.drawImage(glow, x - w * 0.03, y - h * 0.03, w * 1.06, h * 1.06);
       ctx.globalCompositeOperation = 'source-over';
-
-      // 周辺減光
-      const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.2, W / 2, H / 2, Math.hypot(W, H) * 0.6);
-      g.addColorStop(0, 'rgba(0,0,0,0)');
-      g.addColorStop(1, 'rgba(0,0,0,0.85)');
-      ctx.globalAlpha = t;
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, W, H);
 
       // 上下の赤い波形ライン
       const amp = (8 + activity * 60 + Math.random() * 6) * (W / 800 + 0.4);
@@ -294,8 +281,6 @@ function loop(now) {
     }
   }
 
-  if (t > 0.5) score += Math.round(37 + activity * 900);
-  $('score').textContent = String(score % 10000000).padStart(7, '0');
   $('status').textContent = detected ? 'PERSON DETECTED' : (force ? 'RED MODE' : 'SCANNING...');
   $('status').style.color = detected ? '#ff6060' : '#fff';
   $('pct').textContent = mask ? 'BODY ' + Math.round(frac * 100) + '%' : '';
